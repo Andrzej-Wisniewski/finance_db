@@ -1,0 +1,11 @@
+# Python 3.10+
+yfinance>=0.2.66          # od tej wersji yfinance korzysta z curl_cffi
+curl_cffi>=0.7            # sesja HTTP podszywająca się pod przeglądarkę
+pandas>=2.0
+numpy>=1.24
+PyMySQL>=1.1
+DBUtils>=3.0              # pula połączeń (dbutils.pooled_db)
+python-dotenv>=1.0
+requests>=2.31
+lxml>=4.9                 # wymagane przez pandas.read_html (seed_assets.py)
+html5lib>=1.1             # zapasowy parser HTML (Wikipedia)
