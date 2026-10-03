@@ -80,3 +80,6 @@ Codzienny przebieg jest przewidziany na **02:00, poniedziałek–piątek**, po s
 ## 🗄️ Database Schema
 Pięć tabel: `assets`, `daily_quotes`, `financial_reports`, `valuation_ratios`, `etf_constituents`. Klucze obce schodzą kaskadą z `assets`.
 Słownik kolumn, ograniczeń i relacji jest w **[DB_SCHEMA_GUIDE.md](DB_SCHEMA_GUIDE.md)**.
+
+## 📊 SQL Exercises
+Sprawdź również moje repozytorium z [ćwiczeniami SQL] (https://github.com/Andrzej-Wisniewski/SQL-Exercises-finance_db).]
