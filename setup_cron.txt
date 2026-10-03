@@ -2,7 +2,8 @@ Codzienne pobieranie — crontab (macOS / Linux)
 =============================================
 
 Jedna kolejka obejmuje spółki, ETF-y, indeksy, forex, krypto i surowce.
-Puste last_updated_at idą pierwsze, potem najstarsze rekordy.
+Domyślny przebieg bierze aktywne rekordy bez zapisu albo z datą starszą niż dziś
+i powtarza paczki, aż każdy ma last_updated_at z bieżącego dnia.
 
   02:00  pn–pt   python update_data.py
 

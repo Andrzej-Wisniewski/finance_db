@@ -1,7 +1,8 @@
-"""Codzienna aktualizacja: kolejka od pustego last_updated_at, potem najstarsze.
+"""Codzienna aktualizacja aktywów, które nie mają zapisu z dzisiaj.
 
-Jedna paczka na uruchomienie. python update_data.py --missing powtarza paczki,
-aż nie zostanie aktyw bez historii.
+Domyślny przebieg bierze is_active = TRUE oraz last_updated_at IS NULL
+albo datę starszą niż dziś, paczkami, aż kolejka na dziś się skończy.
+python update_data.py --missing dociąga tylko puste last_updated_at.
 """
 from __future__ import annotations
 
@@ -153,7 +154,8 @@ def process_asset(asset: dict[str, Any], session: Any, stats: RunStats) -> None:
     )
 
 
-def run(stats: RunStats, *, only_missing: bool = False) -> None:
+def run(stats: RunStats, *, only_missing: bool = False) -> bool:
+    """Jedna paczka. False, gdy przebieg przerwał limit zapytań Yahoo."""
     if only_missing:
         queue = db.fetch_uninitialized(config.BATCH_SIZE)
     else:
@@ -217,9 +219,10 @@ def run(stats: RunStats, *, only_missing: bool = False) -> None:
                 break
 
         if consecutive_rate_limits >= config.MAX_CONSECUTIVE_RATE_LIMITS:
-            break
+            return False
         if position < len(queue):
             time.sleep(random.uniform(config.DELAY_MIN, config.DELAY_MAX))
+    return True
 
 
 def log_summary(stats: RunStats, seconds: float) -> None:
@@ -258,20 +261,22 @@ def main(argv: list[str] | None = None) -> int:
     started = time.monotonic()
     exit_code = 0
     try:
-        if not args.missing:
-            run(stats)
-        else:
-            while True:
-                seen = stats.processed
-                saved = stats.succeeded
-                run(stats, only_missing=True)
-                if stats.processed == seen:
+        while True:
+            seen = stats.processed
+            saved = stats.succeeded
+            if not run(stats, only_missing=args.missing):
+                exit_code = 1
+                break
+            if stats.processed == seen:
+                if args.missing:
                     log.info("Brak aktywów z pustym last_updated_at.")
-                    break
-                if stats.succeeded == saved:
-                    log.error("Paczka nic nie zapisała. Reszta zostaje na później.")
-                    exit_code = 1
-                    break
+                else:
+                    log.info("Brak aktywów wymagających dzisiejszej aktualizacji.")
+                break
+            if stats.succeeded == saved:
+                log.error("Paczka nic nie zapisała. Reszta zostaje na później.")
+                exit_code = 1
+                break
     except KeyboardInterrupt:
         log.warning("Przerwano ręcznie. Kończę i wypisuję podsumowanie.")
         exit_code = 130

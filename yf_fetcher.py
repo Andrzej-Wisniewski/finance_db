@@ -194,10 +194,11 @@ def _guard(label: str, func: Callable[[], T], default: T) -> T:
 # --------------------------------------------------------------------------- pobieranie
 
 def _price_period(last_updated_at: datetime | None) -> tuple[str, bool]:
-    """Inicjalizacja: 6 miesięcy. Codzienny przebieg: krótkie okno pod ostatnią sesję.
+    """Inicjalizacja: 6 miesięcy. Codzienny przebieg: krótkie okno 5 dni.
 
     Zwraca (okres yfinance, history_load). history_load=True tylko gdy aktywo
-    nie ma jeszcze last_updated_at — wtedy zapisujemy całe okno, inaczej jedną sesję.
+    nie ma jeszcze last_updated_at. Krótkie okno zapisujemy w całości: UPSERT
+    nie dubluje sesji, a pominięty dzień (albo świeca bez Close) nie ginie.
     """
     if last_updated_at is None:
         return config.PRICE_HISTORY_PERIOD, True
@@ -210,6 +211,36 @@ def classify_period(period_end: date, annual: bool) -> tuple[int, str]:
         return period_end.year, "YEAR"
     quarter = (period_end.month - 1) // 3 + 1
     return period_end.year, f"Q{quarter}"
+
+
+def _fill_missing_last_close(history: pd.DataFrame, ticker: Any) -> pd.DataFrame:
+    """Uzupełnia Close ostatniej świecy ceną z fast_info, gdy mieści się w jej high/low.
+
+    Yahoo po sesji GPW oddaje wolumen i zakres dnia, a Close zostawia puste.
+    """
+    if history is None or history.empty or "Close" not in history.columns:
+        return history
+    if pd.notna(history["Close"].iloc[-1]):
+        return history
+    last_price = _guard("last_price", lambda: ticker.fast_info.last_price, None)
+    try:
+        price = float(last_price)
+    except (TypeError, ValueError):
+        return history
+    if not math.isfinite(price):
+        return history
+    low = history["Low"].iloc[-1] if "Low" in history.columns else None
+    high = history["High"].iloc[-1] if "High" in history.columns else None
+    try:
+        if low is None or high is None or not (float(low) <= price <= float(high)):
+            return history
+    except (TypeError, ValueError):
+        return history
+    history = history.copy()
+    history.iloc[-1, history.columns.get_loc("Close")] = price
+    if "Adj Close" in history.columns and pd.isna(history["Adj Close"].iloc[-1]):
+        history.iloc[-1, history.columns.get_loc("Adj Close")] = price
+    return history
 
 
 def prices_to_rows(
@@ -239,6 +270,11 @@ def prices_to_rows(
 
     if min_date is not None:
         df = df[df.index >= pd.Timestamp(min_date)]
+
+    # Ostatnia świeca bywa bez Close (GPW tuż po zamknięciu). Nie może przesłonić
+    # wcześniejszej, już kompletnej sesji.
+    if "Close" in df.columns:
+        df = df[df["Close"].notna()]
 
     if latest_only and not df.empty:
         df = df.tail(1)
@@ -354,7 +390,10 @@ def fetch_asset(asset: dict[str, Any], session: Any) -> FetchedData:
         if _is_rate_limit(exc):
             raise RateLimitedError(str(exc)) from exc
         raise
-    prices = prices_to_rows(history, min_date=price_min, latest_only=not first_load)
+    history = _fill_missing_last_close(history, ticker)
+    # Całe krótkie okno, nie sama ostatnia świeca: 29 września ma Close,
+    # a 30 września czasem wraca jeszcze z pustym Close.
+    prices = prices_to_rows(history, min_date=price_min, latest_only=False)
     if not prices:
         raise NoDataError(f"Brak notowań dla {symbol} (period={period}, cutoff={cutoff})")
 

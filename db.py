@@ -129,14 +129,17 @@ def fetch_queue(
     only_type: str | None = None,
     exclude_type: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Kolejka aktywów: najpierw nowe (last_updated_at IS NULL), potem od najstarszej aktualizacji.
+    """Kolejka codziennego przebiegu: aktywne spółki bez zapisu albo ze starszą datą niż dziś.
 
+    Najpierw last_updated_at IS NULL, potem najstarsza aktualizacja.
+    Spółka odświeżona dzisiaj nie wraca do kolejki aż do następnego dnia.
     only_type / exclude_type zawężają asset_type (parametry, nie sklejany SQL).
     """
     sql = """
         SELECT asset_id, symbol, asset_type, last_updated_at
         FROM assets
         WHERE is_active = TRUE
+          AND (last_updated_at IS NULL OR DATE(last_updated_at) < CURRENT_DATE)
           AND (%s IS NULL OR asset_type = %s)
           AND (%s IS NULL OR asset_type <> %s)
         ORDER BY (last_updated_at IS NULL) DESC, last_updated_at ASC, asset_id ASC
